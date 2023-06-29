@@ -23,7 +23,24 @@ fn main() -> Result<(), String> {
     }
 
     #[cfg(feature = "esp32")]
-    println!("cargo:rustc-cfg=esp32");
+    {
+        println!("cargo:rustc-cfg=esp32");
+        // copy and link xtensa va arg hack
+        use std::env;
+        use std::fs;
+        use std::fs::File;
+        use std::io::Write;
+        use std::path::PathBuf;
+        fn copy_file(out: &PathBuf, from: &str, to: &str) {
+            let mut file = File::create(out.join(to)).unwrap();
+            file.write_all(&fs::read(from).unwrap()).unwrap();
+        }
+        let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+        // provides extern "C" { fn va_list_ptr_get_u32(list: *mut [u32; 3]) -> u32; }
+        copy_file(&out, "./lib_va_list_ptr_get_u32.a", "libvahack.a");
+        println!("cargo:rustc-link-lib={}", "vahack");
+        println!("cargo:rustc-link-search={}", out.display());
+    }
 
     #[cfg(feature = "esp32c2")]
     println!("cargo:rustc-cfg=esp32c2");

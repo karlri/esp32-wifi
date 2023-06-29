@@ -106,17 +106,55 @@ impl Write for StrBuf {
 }
 
 pub unsafe extern "C" fn syslog(_priority: u32, format: *const u8, mut args: VaListImpl) {
-    #[cfg(all(feature = "wifi-logs", target_arch = "riscv32"))]
+    #[cfg(feature = "wifi-logs")]
     {
         let mut buf = [0u8; 512];
         vsnprintf(&mut buf as *mut u8, 511, format, args);
         let res_str = StrBuf::from(&buf as *const u8);
-        info!("{}", res_str.as_str_ref());
+        let s = res_str.as_str_ref().trim();
+        // Skip empty lines.
+        if s.len() != 0 {
+            // TODO: perhaps buffer internally until we get a b'\n', then actually log?
+            // It seems that line-buffered stream is expected. Some log lines end with b':'
+            // and they are trying to continue printing with another call to syslog but that
+            // ends up on another line with this implementation. Also, sometimes they print
+            // a single newline, perhaps they're expecting to flush the buffered output?
+            info!("{}", s);
+        }
     }
-    #[cfg(all(feature = "wifi-logs", not(target_arch = "riscv32")))]
-    {
-        let res_str = StrBuf::from(format);
-        info!("{}", res_str.as_str_ref());
+}
+
+#[repr(C)]
+struct XtensaVaListImplGcc {
+    args: [u32; 3],
+}
+
+impl XtensaVaListImplGcc {
+    pub fn arg<T: GetVa>(&mut self) -> T {
+        T::arg(self)
+    }
+}
+
+trait GetVa {
+    fn arg(list: &mut XtensaVaListImplGcc) -> Self;
+}
+
+extern "C" {
+    fn va_list_ptr_get_u32(list: *mut XtensaVaListImplGcc) -> u32;
+}
+impl GetVa for u32 {
+    fn arg(list: &mut XtensaVaListImplGcc) -> Self {
+        unsafe { va_list_ptr_get_u32(list) }
+    }
+}
+impl GetVa for i32 {
+    fn arg(list: &mut XtensaVaListImplGcc) -> Self {
+        unsafe { va_list_ptr_get_u32(list) as i32 }
+    }
+}
+impl GetVa for u8 {
+    fn arg(list: &mut XtensaVaListImplGcc) -> Self {
+        unsafe { va_list_ptr_get_u32(list) as u8 }
     }
 }
 
@@ -126,6 +164,9 @@ pub(crate) unsafe fn vsnprintf(
     format: *const u8,
     mut args: VaListImpl,
 ) -> i32 {
+    // VaListImpl::get is broken on xtensa. Use alternate implementation that works.
+    #[cfg(target_arch = "xtensa")]
+    let mut args: XtensaVaListImplGcc = core::mem::transmute(args);
     let fmt_str_ptr = format;
 
     let mut res_str = StrBuf::new();

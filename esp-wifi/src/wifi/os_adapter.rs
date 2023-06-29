@@ -29,7 +29,6 @@ use crate::{
     timer::yield_task,
 };
 
-#[cfg(target_arch = "riscv32")]
 use crate::compat::common::syslog;
 
 use super::WifiEvent;
@@ -1515,7 +1514,6 @@ pub unsafe extern "C" fn log_write(
     #[cfg(not(feature = "wifi-logs"))]
     return;
 
-    #[cfg(target_arch = "riscv32")]
     syslog(_level, _format as *const u8, _args);
 }
 
@@ -1545,14 +1543,6 @@ pub unsafe extern "C" fn log_writev(
     #[cfg(not(feature = "wifi-logs"))]
     return;
 
-    #[cfg(target_arch = "xtensa")]
-    #[allow(unreachable_code)]
-    {
-        let s = StrBuf::from(_format as *const u8);
-        log::info!("{}", s.as_str_ref());
-    }
-
-    #[cfg(target_arch = "riscv32")]
     #[allow(unreachable_code)]
     {
         let _args = core::mem::transmute(_args);
